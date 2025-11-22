@@ -1,0 +1,5 @@
+{
+  "name": "ExamFlow - Online Exam Management System",
+  "description": "A robust online exam management system featuring a comprehensive question bank, exam scheduling, and a student testing interface with auto-save and resume capabilities.",
+  "requestFramePermissions": []
+}
