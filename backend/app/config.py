@@ -1,0 +1,6 @@
+# Settings (DB URL, JWT secret, etc.)
+
+
+SECRET = "dOvWqXG/VyMyBJ1tXNEpVcgrf6LmQNTEZaIsWigFJMs"
+DATABASE_URL = "postgresql+asyncpg://postgres:62446@localhost:5432/postgres"
+SCHEMA_SEARCH_PATH = "oems"
