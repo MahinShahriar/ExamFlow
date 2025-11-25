@@ -11,13 +11,13 @@ export const ExamManager: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { addNotification } = useNotification();
 
-  // Intern: state for question search inputs
+  // state for question search inputs
   const [qTitleSearch, setQTitleSearch] = useState('');
   const [qComplexitySearch, setQComplexitySearch] = useState('');
   const [qTagSearch, setQTagSearch] = useState('');
   const [appliedQFilters, setAppliedQFilters] = useState({ title: '', complexity: '', tag: '' });
 
-  // Intern: form state for new or edited exam
+  //  form state for new or edited exam
   const [newExam, setNewExam] = useState<Partial<Exam>>({
     title: '',
     duration_minutes: 60,
@@ -31,16 +31,18 @@ export const ExamManager: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [eData, qData] = await Promise.all([fetchExams(), fetchAllQuestions()]);
+      const [eData, qData] = await Promise.all([fetchExams('admin'), fetchAllQuestions()]);
       setExams(eData);
       setQuestions(qData);
-    } catch (err) {
+    } catch (err: any) {
+      // Provide better diagnostics: log full error and show user-friendly notification with backend detail when available
       console.error('Failed to load exams/questions', err);
+      const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Backend not reachable';
+      addNotification('error', `Failed to load exams/questions: ${detail}`);
       setExams([]);
       setQuestions([]);
     }
   };
-
   const resetFilters = () => {
     // Intern: clear search inputs and applied filters
     setQTitleSearch('');
@@ -330,22 +332,22 @@ export const ExamManager: React.FC = () => {
                  {exam.is_published ? 'Unpublish' : 'Publish'}
                </button>
 
-               <button
-                 onClick={async () => {
-                   if (!window.confirm('Delete this exam? This action cannot be undone.')) return;
-                   try {
-                     await deleteExam(exam.id);
-                     addNotification('error', 'Exam deleted successfully');
-                     await loadData();
-                   } catch (e: any) {
-                     console.error('Delete exam failed', e);
-                     addNotification('error', e?.message || 'Failed to delete exam');
-                   }
-                 }}
-                 className="text-sm text-red-600 hover:text-red-800 font-medium border border-red-200 px-3 py-1 rounded hover:bg-red-50"
-               >
-                 Delete
-               </button>
+               {/*<button*/}
+               {/*  onClick={async () => {*/}
+               {/*    if (!window.confirm('Delete this exam? This action cannot be undone.')) return;*/}
+               {/*    try {*/}
+               {/*      await deleteExam(exam.id);*/}
+               {/*      addNotification('error', 'Exam deleted successfully');*/}
+               {/*      await loadData();*/}
+               {/*    } catch (e: any) {*/}
+               {/*      console.error('Delete exam failed', e);*/}
+               {/*      addNotification('error', e?.message || 'Failed to delete exam');*/}
+               {/*    }*/}
+               {/*  }}*/}
+               {/*  className="text-sm text-red-600 hover:text-red-800 font-medium border border-red-200 px-3 py-1 rounded hover:bg-red-50"*/}
+               {/*>*/}
+               {/*  Delete*/}
+               {/*</button>*/}
              </div>
            </div>
          ))}

@@ -30,13 +30,6 @@ export const Login: React.FC = () => {
             Or <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">create a new student account</Link>
           </p>
         </div>
-        
-        <div className="bg-blue-50 border border-blue-200 rounded p-4 text-sm text-blue-800 mb-4">
-          <p className="font-bold mb-1">Demo Credentials:</p>
-          <p>Admin: <span className="font-mono">user@admin.com / admin123</span></p>
-          <p>Student: <span className="font-mono">test@test.com / test123</span></p>
-        </div>
-
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm -space-y-px">
             <div>

@@ -50,7 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // set default header for axios so other API calls include the bearer token
       axios.defaults.headers.common['Authorization'] = `Bearer ${res.token}`;
       setUser(res.user);
-      addNotification('success', `Welcome back, ${res.user.name}!`);
+      addNotification('success', `Welcome back, ${res.user.full_name}!`);
     } catch (e: any) {
       addNotification('error', e.message || 'Login failed');
       throw e;

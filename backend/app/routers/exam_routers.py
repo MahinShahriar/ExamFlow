@@ -1,5 +1,3 @@
-# filepath: backend/app/routers/exam_routers.py
-#  routes for exam CRUD and publish/unpublish
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 from uuid import UUID
@@ -19,22 +17,18 @@ router = APIRouter(prefix="/exams", tags=["Exams"])
 
 
 
-@router.get("/", response_model=List[ExamRead], dependencies=[Depends(current_active_user)])
+@router.get("/", response_model=List[ExamRead], dependencies=[Depends(current_admin)])
 async def get_all_exams(session: AsyncSession = Depends(get_async_session), user=Depends(current_active_user)):
-    # return all exams. Students only get published exams.
-    print(user.role, "\n\n\n")
-    if user.role.name == "STUDENT":
-        stmt = select(Exam).where(Exam.is_published == True)
-    else:
-        stmt = select(Exam)
-    result = await session.execute(stmt)
+    result = await session.execute(select(Exam))
     exams = result.scalars().all()
-
-    out = []
-    for ex in exams:
-        qids = await _get_ordered_question_ids(session, ex.id)
-        out.append(_exam_to_read_dict(ex, qids))
-    return out
+    exam_list = []
+    if exams:
+        for exam in exams:
+            qids = await _get_ordered_question_ids(session, exam.id)
+            exam_list.append(_exam_to_read_dict(exam, qids))
+    else:
+        return []
+    return exam_list
 
 
 @router.post("/", response_model=ExamRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(current_admin)])
@@ -86,8 +80,6 @@ async def create_exam(payload: ExamCreate, session: AsyncSession = Depends(get_a
 async def get_exam(exam_id: UUID, session: AsyncSession = Depends(get_async_session), user=Depends(current_active_user)):
 
     #  get single exam. Students see only published exam.
-    print(user.role, "\n\n")
-
 
     if user.role.name == "STUDENT":
         result = await session.execute(select(Exam).where(Exam.id == exam_id, Exam.is_published == True))
@@ -159,13 +151,22 @@ async def update_exam(exam_id: UUID, payload: ExamUpdate, session: AsyncSession 
 async def delete_exam(exam_id: UUID, session: AsyncSession = Depends(get_async_session)):
     # delete exam and its question links
     from ..models.exam_model import exam_questions
+    from ..models.exam_session_model import ExamSession
 
     result = await session.execute(select(Exam).where(Exam.id == exam_id))
     exam = result.scalar_one_or_none()
+
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")
+
+    # delete associated exam sessions first to avoid FK constraint issues
+    await session.execute(delete(ExamSession).where(ExamSession.exam_id == exam.id))
+
+    # delete exam-question links
     await session.execute(delete(exam_questions).where(exam_questions.c.exam_id == exam.id))
     await session.commit()
+
+    # delete the exam record
     await session.delete(exam)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -178,6 +179,16 @@ async def publish_exam(exam_id: UUID, session: AsyncSession = Depends(get_async_
     exam = result.scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")
+    await session.refresh(exam)
+    try:
+        qids = await _get_ordered_question_ids(session, exam.id)
+    except Exception as e:
+        print("\n\n\nError fetching question IDs:", e, "\n\n\n")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error fetching question IDs")
+
+    if len(qids) == 0:
+        print("\n\n\nNo questions linked to exam\n\n\n")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot publish exam with no questions")
     exam.is_published = True
     session.add(exam)
     await session.commit()

@@ -9,7 +9,7 @@ export const Results: React.FC<{ currentUser: { id: string } }> = ({ currentUser
 
   useEffect(() => {
     const load = async () => {
-      const [r, e] = await Promise.all([getStudentResults(currentUser.id), fetchExams()]);
+      const [r, e] = await Promise.all([getStudentResults(currentUser.id), fetchExams('student')]);
       setResults(r);
       setExams(e);
     };

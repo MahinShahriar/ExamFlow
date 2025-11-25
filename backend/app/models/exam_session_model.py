@@ -1,23 +1,9 @@
-"""Table:
-ExamSessions (Submissions)
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `id` | UUID | Primary Key |
-| `exam_id` | UUID | FK -> Exams |
-| `student_id` | UUID | FK -> Users-> user.role==STUDENT |
-| `start_time` | TIMESTAMP | When student clicked "Start" |
-| `status` | ENUM | `'in_progress'`, `'submitted'` |
-| `score` | FLOAT | Total calculated score |
-| `answers` | JSONB | Map: `{ "question_id": "user_answer_value" }` |
-| `question_scores` | JSONB | Map: `{ "question_id": score_int }` |
-| `remaining_seconds`| INTEGER | For tracking timer on resume |
-"""
-
 from app.db import Base
-from sqlalchemy import Column, Integer, Float, DateTime, Enum as SAEnum
+from sqlalchemy import Column, Integer, Float, DateTime, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy import ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
+from sqlalchemy.ext.mutable import MutableDict
 import uuid
 import enum
 from datetime import datetime
@@ -30,16 +16,21 @@ class ExamSessionStatus(str, enum.Enum):
 
 class ExamSession(Base):
     __tablename__ = "exam_sessions"
+    __table_args__ = (UniqueConstraint('exam_id', 'student_id', name='uq_exam_student'),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    exam_id = Column(UUID(as_uuid=True), ForeignKey("exams.id"), nullable=False)
+
+    # ensure exam_id is a proper foreign key so DB-level ON DELETE CASCADE can remove sessions
+    exam_id = Column(UUID(as_uuid=True), ForeignKey("exams.id", ondelete="CASCADE"), nullable=False)
     student_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     start_time = Column(DateTime, default=datetime.utcnow)
     status = Column(SAEnum(ExamSessionStatus), default=ExamSessionStatus.IN_PROGRESS, nullable=False)
     score = Column(Float, nullable=True)
 
-    answers = Column(JSONB, nullable=True, default=dict)
-    question_scores = Column(JSONB, nullable=True, default=dict)
+    # use MutableDict so SQLAlchemy detects in-place changes to JSON fields
+    answers = Column(MutableDict.as_mutable(JSONB), nullable=True, default=dict)
+    question_scores = Column(MutableDict.as_mutable(JSONB), nullable=True, default=dict)
     remaining_seconds = Column(Integer, nullable=True)
-    exam = relationship("Exam", backref="sessions")
+    # Use a backref with passive_deletes so SQLAlchemy will not try to nullify the FK when deleting the parent
+    exam = relationship("Exam", backref=backref("sessions", passive_deletes=True))

@@ -16,10 +16,23 @@ const decodeTokenLocal = (token: string) => {
   }
 };
 
+// New helper: read token from localStorage and return headers object
+const getAuthHeaders = (): Record<string, any> => {
+  try {
+    const token = localStorage.getItem('authToken');
+    const defaults: any = (axios.defaults && axios.defaults.headers && axios.defaults.headers.common) ? axios.defaults.headers.common : {};
+    const headers: Record<string, any> = { ...defaults };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
+  } catch (e) {
+  }
+  return {};
+};
+
 // --- Auth API ---
 
 export const login = async (email: string, password: string): Promise<AuthResponse> => {
-  // Call backend login. If backend is down we surface an error to UI.
+
   try {
     const resp = await axios.post(`${BACKEND}/auth/login`, { email, password });
     const data = resp.data;
@@ -32,7 +45,7 @@ export const login = async (email: string, password: string): Promise<AuthRespon
 };
 
 export const register = async (name: string, email: string, password: string): Promise<AuthResponse> => {
-  // Call backend register endpoint. If it returns created user without token we try to login.
+
   try {
     const resp = await axios.post(`${BACKEND}/auth/register`, { email, password, full_name: name });
     const data = resp.data;
@@ -53,30 +66,40 @@ export const register = async (name: string, email: string, password: string): P
 
 export const getCurrentUser = async (token: string): Promise<User | null> => {
   if (!token) return null;
+  // Call backend to get user info based on token
   try {
     const resp = await axios.get(`${BACKEND}/users/me`, { headers: { Authorization: `Bearer ${token}` } });
     return resp.data as User;
-  } catch (err) {
-    // Try a local decode if token is not a real JWT (fallback limited)
-    try {
-      const decoded = decodeTokenLocal(token);
-      if (!decoded) return null;
-      return { id: decoded.id, name: decoded.name || '', email: decoded.email || '', role: decoded.role || 'student' } as User;
-    } catch {
-      return null;
-    }
+  } catch (err: any) {
+      console.error('Failed to get current user from backend, trying to decode token locally', err);
+      // fallback: attempt to decode token locally (useful for tests/mocked tokens)
+      try {
+        const decoded = decodeTokenLocal(token);
+        if (!decoded) return null;
+        // Ensure we satisfy the frontend User interface (id, name, email, role)
+        const user: User = {
+          id: String(decoded.id || decoded.user_id || ''),
+          name: String(decoded.name || decoded.full_name || decoded.username || ''),
+          email: String(decoded.email || ''),
+          role: (decoded.role === 'admin' ? 'admin' : 'student')
+        };
+        return user;
+      } catch {
+        return null;
+      }
   }
 };
 
 // --- Question Bank API ---
 
-export const fetchQuestions = async (params?: { search?: string; tags?: string[]; page?: number; per_page?: number }): Promise<{ items: Question[]; total: number }> => {
+export const fetchQuestions = async (params?: { search?: string; tags?: string[]; page?: number; per_page?: number; complexity?: string }): Promise<{ items: Question[]; total: number }> => {
   try {
     const queryParams: Record<string, string | number> = {};
     if (params?.search) queryParams['search'] = params.search;
     if (params?.tags && params.tags.length > 0) queryParams['tags'] = params.tags.join(',');
     if (params?.page) queryParams['page'] = params.page;
     if (params?.per_page) queryParams['per_page'] = params.per_page;
+    if (params?.complexity) queryParams['complexity'] = params.complexity;
 
     const resp = await axios.get(`${BACKEND}/api/questionbank/list`, { params: queryParams });
     if (resp.data && Array.isArray(resp.data.items) && typeof resp.data.total === 'number') {
@@ -84,7 +107,9 @@ export const fetchQuestions = async (params?: { search?: string; tags?: string[]
     }
     throw new Error('Invalid response from questions endpoint');
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to fetch questions from backend');
+    // surface backend detail if present
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to fetch questions from backend';
+    throw new Error(detail);
   }
 };
 
@@ -92,7 +117,7 @@ export const uploadExcelQuestions = async (file: File): Promise<Question[]> => {
   const form = new FormData();
   form.append('file', file);
   try {
-    const resp = await axios.post(`${BACKEND}/api/questionbank/upload`, form);
+    const resp = await axios.post(`${BACKEND}/api/questionbank/upload`, form, { headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' } });
     const data = resp.data;
     if (data && Array.isArray(data.preview)) {
       const mapped: Question[] = data.preview.map((p: any) => ({
@@ -110,7 +135,8 @@ export const uploadExcelQuestions = async (file: File): Promise<Question[]> => {
     }
     throw new Error('Invalid upload response');
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to upload/parse excel on backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to upload/parse excel on backend';
+    throw new Error(detail);
   }
 };
 
@@ -127,10 +153,11 @@ export const confirmImportQuestions = async (newQuestions: Question[]): Promise<
       tags: q.tags || []
     }));
 
-    const resp = await axios.post(`${BACKEND}/api/questionbank/confirm-import`, payload);
+    const resp = await axios.post(`${BACKEND}/api/questionbank/confirm-import`, payload, { headers: getAuthHeaders() });
     return resp.data || { message: 'Import successful' };
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to confirm import on backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to confirm import on backend';
+    throw new Error(detail);
   }
 };
 
@@ -145,9 +172,16 @@ export const getQuestionById = async (id: string): Promise<Question | null> => {
 
 // --- Exam Management API ---
 
-export const fetchExams = async (): Promise<Exam[]> => {
+//  if user.role === 'admin' , endpoint is : /api/exams
+//  if user.role === 'student' , endpoint is : /api/student/exams
+
+
+
+export const fetchExams = async (role: 'admin' | 'student' = 'admin'): Promise<Exam[]> => {
   try {
-    const resp = await axios.get(`${BACKEND}/api/exams`);
+    // choose endpoint based on role to ensure Student and Admin use the correct backend route
+    const endpoint = role === 'student' ? '/api/student/exams' : '/api/exams/';
+    const resp = await axios.get(`${BACKEND}${endpoint}`, { headers: getAuthHeaders() });
     if (Array.isArray(resp.data)) {
       const mapped: Exam[] = resp.data.map((e: any) => ({
         id: e.id,
@@ -163,7 +197,8 @@ export const fetchExams = async (): Promise<Exam[]> => {
     }
     throw new Error('Invalid response from exams endpoint');
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to fetch exams from backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to fetch exams from backend';
+    throw new Error(detail);
   }
 };
 
@@ -178,7 +213,7 @@ export const fetchAllQuestions = async (): Promise<Question[]> => {
 
 export const getExamById = async (id: string): Promise<Exam | null> => {
   try {
-    const resp = await axios.get(`${BACKEND}/api/exams/${id}`);
+    const resp = await axios.get(`${BACKEND}/api/exams/${id}`, { headers: getAuthHeaders() });
     const e = resp.data;
     return {
       id: e.id,
@@ -191,7 +226,8 @@ export const getExamById = async (id: string): Promise<Exam | null> => {
       is_published: e.is_published ?? false,
     } as Exam;
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to get exam from backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to get exam from backend';
+    throw new Error(detail);
   }
 };
 
@@ -205,7 +241,8 @@ export const createExam = async (exam: Omit<Exam, 'id'>): Promise<Exam> => {
       is_published: exam.is_published ?? false,
       questions: exam.question_ids || [],
     };
-    const resp = await axios.post(`${BACKEND}/api/exams`, payload);
+    // POST to the exams root with trailing slash to avoid redirects
+    const resp = await axios.post(`${BACKEND}/api/exams/`, payload, { headers: getAuthHeaders() });
     const e = resp.data;
     return {
       id: e.id,
@@ -218,7 +255,8 @@ export const createExam = async (exam: Omit<Exam, 'id'>): Promise<Exam> => {
       is_published: e.is_published ?? false,
     } as Exam;
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to create exam on backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to create exam on backend';
+    throw new Error(detail);
   }
 };
 
@@ -232,7 +270,7 @@ export const updateExam = async (exam: Exam): Promise<Exam> => {
     if (exam.question_ids !== undefined) payload.questions = exam.question_ids;
     if (exam.is_published !== undefined) payload.is_published = exam.is_published;
 
-    const resp = await axios.put(`${BACKEND}/api/exams/${exam.id}`, payload);
+    const resp = await axios.put(`${BACKEND}/api/exams/${exam.id}`, payload, { headers: getAuthHeaders() });
     const e = resp.data;
     return {
       id: e.id,
@@ -245,23 +283,25 @@ export const updateExam = async (exam: Exam): Promise<Exam> => {
       is_published: e.is_published ?? false,
     } as Exam;
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to update exam on backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to update exam on backend';
+    throw new Error(detail);
   }
 };
 
 export const deleteExam = async (examId: string): Promise<void> => {
   try {
-    await axios.delete(`${BACKEND}/api/exams/${examId}`);
+    await axios.delete(`${BACKEND}/api/exams/${examId}`, { headers: getAuthHeaders() });
     return;
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to delete exam on backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to delete exam on backend';
+    throw new Error(detail);
   }
 };
 
 export const publishExam = async (examId: string, isPublished: boolean): Promise<Exam> => {
   try {
     const url = isPublished ? `${BACKEND}/api/exams/${examId}/publish` : `${BACKEND}/api/exams/${examId}/unpublish`;
-    const resp = await axios.post(url);
+    const resp = await axios.post(url, {}, { headers: getAuthHeaders() });
     const e = resp.data;
     return {
       id: e.id,
@@ -274,7 +314,8 @@ export const publishExam = async (examId: string, isPublished: boolean): Promise
       is_published: e.is_published ?? false,
     } as Exam;
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to toggle publish on backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to toggle publish on backend';
+    throw new Error(detail);
   }
 };
 
@@ -282,7 +323,7 @@ export const publishExam = async (examId: string, isPublished: boolean): Promise
 
 export const startExamSession = async (examId: string, studentId: string): Promise<StudentExamSession> => {
   try {
-    const resp = await axios.post(`${BACKEND}/api/exams/${examId}/start`);
+    const resp = await axios.post(`${BACKEND}/api/exams/${examId}/start` , {}, { headers: getAuthHeaders() });
     const data = resp.data;
     // Map backend session response to local shape
     return {
@@ -295,25 +336,45 @@ export const startExamSession = async (examId: string, studentId: string): Promi
       questions: data.questions || []
     } as StudentExamSession;
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to start exam session on backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to start exam session on backend';
+    throw new Error(detail);
   }
 };
 
 export const saveExamProgress = async (session: StudentExamSession): Promise<void> => {
   try {
     const payload = { answers: session.answers || {}, remaining_seconds: session.remainingSeconds ?? 0 };
-    await axios.put(`${BACKEND}/api/exams/${session.examId}/session`, payload);
+    // persist locally as a fallback so users can still resume even if network fails
+    try {
+      const key = `exam_session_${session.examId}_${session.studentId}`;
+      localStorage.setItem(key, JSON.stringify({ ...session }));
+    } catch (e) {
+      // ignore localStorage errors
+    }
+
+    console.log("🔥 Saving exam progress payload:", JSON.stringify(payload, null, 2));
+    await axios.put(`${BACKEND}/api/exams/${session.examId}/session`, payload, { headers: getAuthHeaders() });
     return;
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to autosave session on backend');
+    console.error('Failed to autosave session on backend', err?.response || err?.message || err);
+    // return silently so callers (like unload handlers) do not get blocked
+    return;
   }
 };
 
+// Enhance submit to remove local fallback on success and surface errors
 export const submitExam = async (session: StudentExamSession): Promise<StudentExamSession> => {
   try {
     const payload = { answers: session.answers || {} };
-    const resp = await axios.post(`${BACKEND}/api/exams/${session.examId}/submit`, payload);
+    const resp = await axios.post(`${BACKEND}/api/exams/${session.examId}/submit`, payload, { headers: getAuthHeaders() });
     const data = resp.data;
+
+    // Cleanup local fallback on successful submit
+    try {
+      const key = `exam_session_${session.examId}_${session.studentId}`;
+      localStorage.removeItem(key);
+    } catch (e) { /* ignore */ }
+
     return {
       examId: data.exam_id || data.examId || session.examId,
       studentId: data.student_id || data.studentId || session.studentId,
@@ -325,14 +386,15 @@ export const submitExam = async (session: StudentExamSession): Promise<StudentEx
       questionScores: data.question_scores || session.questionScores || {}
     } as StudentExamSession;
   } catch (err: any) {
-    throw new Error(err?.message || 'Failed to submit session to backend');
+    const detail = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to submit session to backend';
+    throw new Error(detail);
   }
 };
 
 export const updateSessionScore = async (examId: string, studentId: string, questionId: string, newScore: number): Promise<StudentExamSession> => {
   try {
     const payload = { exam_id: examId, student_id: studentId, question_id: questionId, new_score: newScore };
-    const resp = await axios.post(`${BACKEND}/api/student/results/grade`, payload);
+    const resp = await axios.post(`${BACKEND}/api/student/results/grade`, payload, { headers: getAuthHeaders() });
     const data = resp.data;
     // Map backend response to StudentExamSession
     return {
@@ -347,14 +409,15 @@ export const updateSessionScore = async (examId: string, studentId: string, ques
     } as StudentExamSession;
   } catch (err: any) {
     if (err?.response?.data?.detail) throw new Error(err.response.data.detail);
-    throw new Error(err?.message || 'Failed to update session score on backend');
+    const detail = err?.response?.data || err?.message || 'Failed to update session score on backend';
+    throw new Error(detail);
   }
 };
 
 export const getStudentResults = async (studentId: string): Promise<StudentExamSession[]> => {
   try {
     const payload = studentId ? { student_id: studentId } : {};
-    const resp = await axios.post(`${BACKEND}/api/student/results`, payload);
+    const resp = await axios.post(`${BACKEND}/api/student/results`, payload, { headers: getAuthHeaders() });
     if (Array.isArray(resp.data)) {
       return resp.data.map((d: any) => ({
         examId: d.exam_id,
@@ -375,7 +438,7 @@ export const getStudentResults = async (studentId: string): Promise<StudentExamS
 
 export const getAllExamResults = async (): Promise<StudentExamSession[]> => {
   try {
-    const resp = await axios.post(`${BACKEND}/api/student/results`, {});
+    const resp = await axios.post(`${BACKEND}/api/student/results`, {}, { headers: getAuthHeaders() });
     if (Array.isArray(resp.data)) {
       return resp.data.map((d: any) => ({
         examId: d.exam_id,
@@ -397,7 +460,7 @@ export const getAllExamResults = async (): Promise<StudentExamSession[]> => {
 export const getExamResult = async (examId: string, studentId: string): Promise<StudentExamSession | null> => {
   try {
     const payload = { exam_id: examId, student_id: studentId };
-    const resp = await axios.post(`${BACKEND}/api/student/results`, payload);
+    const resp = await axios.post(`${BACKEND}/api/student/results`, payload, { headers: getAuthHeaders() });
     if (Array.isArray(resp.data) && resp.data.length > 0) {
       const d = resp.data[0];
       return {
@@ -423,9 +486,21 @@ export const uploadMedia = async (file: File): Promise<{ url: string }> => {
   const form = new FormData();
   form.append('file', file);
   try {
-    const resp = await axios.post(`${BACKEND}/api/media/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    // Send auth headers as well (if present) so backend can verify the user
+    const resp = await axios.post(`${BACKEND}/api/media/upload`, form, { headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' } });
     const data = resp.data;
-    if (data && data.url) return { url: data.url };
+    if (data && data.url) {
+      // Normalize relative URLs returned by the backend (e.g. '/media/..') into absolute URLs
+      let url = data.url as string;
+      if (url.startsWith('/')) {
+        try {
+          url = window.location.origin + url;
+        } catch (e) {
+          // fallback: return as-is
+        }
+      }
+      return { url };
+    }
     throw new Error('Invalid upload response');
   } catch (err: any) {
     throw new Error(err?.message || 'Failed to upload media to backend');

@@ -30,11 +30,11 @@ export const QuestionBank: React.FC = () => {
     loadQuestions();
   }, []);
 
-  const loadQuestions = async (params?: { search?: string; tags?: string[]; page?: number }) => {
+  const loadQuestions = async (params?: { search?: string; tags?: string[]; page?: number; complexity?: string }) => {
     setLoading(true);
     try {
       const page = params?.page && params.page > 0 ? params.page : currentPage;
-      const resp = await fetchQuestions({ search: params?.search, tags: params?.tags, page, per_page: PER_PAGE });
+      const resp = await fetchQuestions({ search: params?.search, tags: params?.tags, page, per_page: PER_PAGE, complexity: params?.complexity });
       setQuestions(resp.items || []);
       setTotalItems(resp.total || 0);
       setCurrentPage(page);
@@ -77,8 +77,7 @@ export const QuestionBank: React.FC = () => {
       setShowPreview(false);
       setPreviewData([]);
       // Reload from backend starting at page 1
-      const combined = [appliedFilters.title, appliedFilters.complexity].filter(Boolean).join(' ');
-      await loadQuestions({ search: combined || undefined, tags: appliedFilters.tag ? [appliedFilters.tag] : undefined, page: 1 });
+      await loadQuestions({ search: appliedFilters.title || undefined, complexity: appliedFilters.complexity || undefined, tags: appliedFilters.tag ? [appliedFilters.tag] : undefined, page: 1 });
     } catch (e: any) {
       console.error('Import failed', e);
       addNotification('error', e?.message || 'Import failed');
@@ -94,10 +93,10 @@ export const QuestionBank: React.FC = () => {
       tag: tagSearch
     });
 
-    // Build backend params: use titleSearch + complexitySearch in search, tags from tagSearch (comma separated)
-    const params: { search?: string; tags?: string[]; page?: number } = {};
-    const combinedSearch = [titleSearch, complexitySearch].filter(s => s && s.trim().length > 0).join(' ');
-    if (combinedSearch) params.search = combinedSearch;
+    // Build backend params: send titleSearch and complexity separately, tags from tagSearch (comma separated)
+    const params: { search?: string; tags?: string[]; page?: number; complexity?: string } = {};
+    if (titleSearch && titleSearch.trim().length > 0) params.search = titleSearch;
+    if (complexitySearch && complexitySearch.trim().length > 0) params.complexity = complexitySearch;
     if (tagSearch && tagSearch.trim().length > 0) params.tags = tagSearch.split(',').map(t => t.trim()).filter(Boolean);
     // Reset to page 1 on new search
     params.page = 1;
@@ -287,8 +286,7 @@ export const QuestionBank: React.FC = () => {
         <div className="mt-6 flex items-center justify-center space-x-3">
           <button
             onClick={() => { if (currentPage > 1) {
-                const combined = [appliedFilters.title, appliedFilters.complexity].filter(Boolean).join(' ');
-                loadQuestions({ search: combined || undefined, tags: appliedFilters.tag ? [appliedFilters.tag] : undefined, page: currentPage - 1 });
+                loadQuestions({ search: appliedFilters.title || undefined, complexity: appliedFilters.complexity || undefined, tags: appliedFilters.tag ? [appliedFilters.tag] : undefined, page: currentPage - 1 });
               } }}
             disabled={currentPage === 1}
             className="px-3 py-1 border rounded bg-white disabled:opacity-50"
@@ -302,8 +300,7 @@ export const QuestionBank: React.FC = () => {
             return (
               <button key={pageNum}
                 onClick={() => {
-                  const combined = [appliedFilters.title, appliedFilters.complexity].filter(Boolean).join(' ');
-                  loadQuestions({ search: combined || undefined, tags: appliedFilters.tag ? [appliedFilters.tag] : undefined, page: pageNum });
+                  loadQuestions({ search: appliedFilters.title || undefined, complexity: appliedFilters.complexity || undefined, tags: appliedFilters.tag ? [appliedFilters.tag] : undefined, page: pageNum });
                 }}
                 className={`px-3 py-1 border rounded ${pageNum === currentPage ? 'bg-blue-600 text-white' : 'bg-white'}`}
               >{pageNum}</button>
@@ -312,8 +309,7 @@ export const QuestionBank: React.FC = () => {
 
           <button
             onClick={() => { if (currentPage < Math.ceil(totalItems / PER_PAGE)) {
-                const combined = [appliedFilters.title, appliedFilters.complexity].filter(Boolean).join(' ');
-                loadQuestions({ search: combined || undefined, tags: appliedFilters.tag ? [appliedFilters.tag] : undefined, page: currentPage + 1 });
+                loadQuestions({ search: appliedFilters.title || undefined, complexity: appliedFilters.complexity || undefined, tags: appliedFilters.tag ? [appliedFilters.tag] : undefined, page: currentPage + 1 });
               } }}
             disabled={currentPage >= Math.ceil(totalItems / PER_PAGE)}
             className="px-3 py-1 border rounded bg-white disabled:opacity-50"

@@ -21,10 +21,10 @@ export const ExamRunner: React.FC<{ currentUser: { id: string } }> = ({ currentU
     if (examId) {
       initializeExam();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [examId]);
 
-  // Timer Effect - Runs independently of session content
+
   useEffect(() => {
     if (!session || session.status === 'submitted') return;
     
@@ -44,46 +44,41 @@ export const ExamRunner: React.FC<{ currentUser: { id: string } }> = ({ currentU
   // Auto-submit watcher
   useEffect(() => {
     if (timeLeft === 0 && session && session.status !== 'submitted' && !loading && session.startTime > 0) {
-       // Time ran out, submit automatically without confirmation
-       // Ensure we only do this if session is loaded and active
        handleFinishExam(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [timeLeft, session, loading]);
 
-  // Fallback auto-save watcher (debounced shorter)
+
   useEffect(() => {
     if (!session || session.status === 'submitted' || loading) return;
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    // keep a short debounce as a fallback
+
     saveTimeoutRef.current = setTimeout(() => {
       const updatedSession = { ...session, remainingSeconds: timeLeft };
-      // best-effort save
+
       saveExamProgress(updatedSession).catch(() => {});
-    }, 800);
+    }, 7000);
 
     return () => {
         if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     }
   }, [session?.answers, timeLeft, loading]); 
 
-  // Save session on tab close / navigation away so the student can resume
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // Persist latest session synchronously to localStorage via saveExamProgress
       try {
         if (session && session.status !== 'submitted') {
-          // save synchronously: the implementation writes to localStorage synchronously
-          // we won't await since unload disallows async waits
+
           saveExamProgress({ ...session, remainingSeconds: timeLeft });
         }
       } catch (err) {
         // ignore
       }
-      // Standard prompt suppression: do not show a confirmation prompt, but returning undefined is fine
-      // e.preventDefault();
+
     };
 
     const handleVisibilityChange = () => {
@@ -105,24 +100,61 @@ export const ExamRunner: React.FC<{ currentUser: { id: string } }> = ({ currentU
 
   const initializeExam = async () => {
     if(!examId) return;
+
+    // Prevent duplicate start requests for the same exam (React StrictMode can mount/unmount quickly in dev and cause double-start)
     try {
-      // 1. Start/Resume Session
-      const sess = await startExamSession(examId, currentUser.id);
-      
+
+      // Use a local `any` cast to avoid TypeScript complaints about custom window props
+      const winAny: any = window as any;
+      winAny.__examStarting = winAny.__examStarting || {};
+
+      if (winAny.__examStarting[examId]) return;
+
+      winAny.__examStarting[examId] = true;
+
+      let sess: StudentExamSession | null = null;
+      try {
+        if (currentUser && examId) {
+          const key = `exam_session_${examId}_${currentUser.id}`;
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw) as StudentExamSession;
+            // basic validation
+            if (parsed && parsed.examId === examId) {
+              sess = parsed;
+            }
+          }
+        }
+      } catch (e) {
+
+      }
+
+      // 1. Start/Resume Session (only call network if no local fallback)
+      if (!sess) {
+        const started = await startExamSession(examId, currentUser.id);
+        sess = started;
+        // persist fallback immediately so remounts won't trigger another start
+        try {
+          const key = `exam_session_${examId}_${currentUser.id}`;
+          localStorage.setItem(key, JSON.stringify(sess));
+        } catch (e) { /* ignore */ }
+      }
+
       if (sess.status === 'submitted') {
-        // If already submitted, redirect to the result detail page
+
+        const winAny2: any = window as any;
+        delete winAny2.__examStarting[examId];
         navigate(`/result/${examId}/${currentUser.id}`);
         return;
       }
 
       // 2. Load Questions
       const allQuestions = await fetchAllQuestions();
-      const exams = await fetchExams();
+      const exams = await fetchExams('student');
       const examDef = exams.find(e => e.id === examId);
       
       if(!examDef) throw new Error("Exam def missing");
 
-      // Filter and order questions as per exam definition
       const examQuestions = examDef.question_ids
         .map(id => allQuestions.find(q => q.id === id))
         .filter(q => q !== undefined) as Question[];
@@ -131,7 +163,17 @@ export const ExamRunner: React.FC<{ currentUser: { id: string } }> = ({ currentU
       setSession(sess);
       setTimeLeft(sess.remainingSeconds);
       setLoading(false);
+
+
+      const winAny3: any = window as any;
+      delete winAny3.__examStarting[examId];
     } catch (e) {
+      try {
+        const winAny4: any = window as any;
+        if (examId && winAny4.__examStarting) delete winAny4.__examStarting[examId];
+      } catch (_) {
+        // ignore
+      }
       console.error(e);
       alert("Failed to load exam");
       navigate('/student/dashboard');
@@ -163,9 +205,8 @@ export const ExamRunner: React.FC<{ currentUser: { id: string } }> = ({ currentU
       }
     };
 
-    // update state and immediately persist the change
     setSession(updatedSession);
-    // cancel any scheduled debounce
+
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveProgressNow(updatedSession);
   };
@@ -179,9 +220,8 @@ export const ExamRunner: React.FC<{ currentUser: { id: string } }> = ({ currentU
     }
 
     setLoading(true);
-    setSaving(false); // Stop showing saving indicator during submit
-    
-    // Cancel any pending auto-save
+    setSaving(false);
+
     if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
     try {
@@ -375,8 +415,8 @@ export const ExamRunner: React.FC<{ currentUser: { id: string } }> = ({ currentU
                            </label>
                            {uploadingImageForQ === currentQ.id && <div className="text-xs text-gray-500 mt-2">Uploading...</div>}
                            {session.answers[currentQ.id] && (
-                             <div className="mt-4">
-                               <img src={session.answers[currentQ.id]} alt="uploaded" className="max-h-40 mx-auto rounded" />
+                             <div className="mt-4 h-40 w-full flex items-center justify-center overflow-hidden bg-gray-50 rounded">
+                               <img src={session.answers[currentQ.id]} alt="uploaded" className="max-h-full max-w-full object-contain rounded" />
                              </div>
                            )}
                         </div>

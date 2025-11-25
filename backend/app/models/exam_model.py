@@ -1,26 +1,5 @@
 from app.db import Base
 from sqlalchemy import String
-
-
-"""
-Exams Model and ExamQuestions Junction Table
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `id` | UUID | Primary Key |
-| `title` | VARCHAR | |
-| `start_time` | TIMESTAMP | ISO 8601 UTC |
-| `end_time` | TIMESTAMP | ISO 8601 UTC |
-| `duration` | INTEGER | In minutes |
-| `is_published` | BOOLEAN | Default `false` |
-
-### 4. ExamQuestions (Junction)
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| `exam_id` | UUID | FK -> Exams |
-| `question_id` | UUID | FK -> Questions |
-| `order` | INTEGER | To maintain sequence in exam |
-"""
-
 from sqlalchemy import Column, Boolean, Integer, DateTime, ForeignKey, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, backref

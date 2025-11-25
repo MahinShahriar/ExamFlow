@@ -13,20 +13,12 @@ def current_user_has_role(required_role: UserRole):
         return user
     return current_user_contains_role
 
-# A specific dependency for admin users
+
 current_admin = current_user_has_role(UserRole.ADMIN)
-# A specific dependency for student users (if needed)
 current_student = current_user_has_role(UserRole.STUDENT)
 
 
 async def users_router_permission(request: Request, user: User = Depends(current_active_user)):
-    """
-    Permission rule for the /users router:
-    - POST/PUT/PATCH/DELETE: only admin users may perform.
-    - GET /users: admin only (listing users).
-    - GET /users/{id} or /users/me: allowed for the authenticated user (same id) or admins.
-    This function is intended to be used as a dependency on the users router (include_router(..., dependencies=[Depends(users_router_permission)])).
-    """
     method = request.method.upper()
     # Admin-only methods
     if method in ("POST", "PUT", "PATCH", "DELETE"):

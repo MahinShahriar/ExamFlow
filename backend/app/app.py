@@ -26,11 +26,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+# NOTE: include the exact origins used by the frontend dev server (no trailing slash)
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:3000/",
-    "http://192.168.0.118:3000/"
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
 app.add_middleware(
@@ -54,7 +55,7 @@ app.include_router(
     dependencies=[Depends(users_router_permission)],
 )
 
-# Register other routers under /api
+
 app.include_router(question_bank.router, prefix="/api")
 app.include_router(exam_routers.router, prefix="/api")
 app.include_router(student_routers.router, prefix="/api", tags=["Student"])

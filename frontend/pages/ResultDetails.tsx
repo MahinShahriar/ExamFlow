@@ -22,7 +22,7 @@ export const ResultDetails: React.FC<{ currentUser: { id: string, role: string }
   const loadData = async () => {
     if (!examId || !studentId) return;
     
-    // Security check for students trying to view others' results
+
     if (currentUser.role === 'student' && currentUser.id !== studentId) {
       alert("Unauthorized");
       navigate('/');
@@ -32,7 +32,7 @@ export const ResultDetails: React.FC<{ currentUser: { id: string, role: string }
     try {
       const [sess, exams, allQuestions] = await Promise.all([
         getExamResult(examId, studentId),
-        fetchExams(),
+        fetchExams(currentUser.role),
         fetchAllQuestions()
       ]);
 
@@ -74,11 +74,22 @@ export const ResultDetails: React.FC<{ currentUser: { id: string, role: string }
      return false; 
   };
 
-  const handleGrade = async (qId: string, newScore: number) => {
+  const handleGrade = async (qId: string, newScore: number, maxScore?: number) => {
     if (!examId || !studentId) return;
+    // validate numeric
+    const ns = Number(newScore);
+    if (isNaN(ns)) {
+      alert('Grade must be a number');
+      return;
+    }
+    if (maxScore !== undefined && (ns < 0 || ns > Number(maxScore))) {
+      alert(`Grade must be between 0 and ${maxScore}`);
+      return;
+    }
+
     setUpdatingQ(qId);
     try {
-        const updated = await updateSessionScore(examId, studentId, qId, newScore);
+        const updated = await updateSessionScore(examId, studentId, qId, ns);
         setSession(updated);
     } catch(e) {
         alert("Failed to update score");
@@ -165,13 +176,41 @@ export const ResultDetails: React.FC<{ currentUser: { id: string, role: string }
                         <div className={`p-4 rounded border ${!isManual && correct ? 'bg-green-50 border-green-100' : (isManual ? 'bg-yellow-50 border-yellow-100' : 'bg-red-50 border-red-100')}`}>
                             {q.type === QuestionType.IMAGE_UPLOAD ? (
                                 userAnswer ? (
-                                  // Render image thumbnail + link
-                                  <div className="flex flex-col items-start gap-2">
-                                    <a href={userAnswer} target="_blank" rel="noopener noreferrer">
-                                      <img src={userAnswer} alt={`upload-${q.id}`} className="max-h-48 rounded shadow-sm" />
-                                    </a>
-                                    <a className="text-blue-600 underline text-sm" href={userAnswer} target="_blank" rel="noopener noreferrer">Open image in new tab</a>
-                                  </div>
+                                  // Normalize relative URLs (e.g. "/media/...") to absolute so images render in admin and student views.
+                                  (() => {
+                                    let imageUrl = userAnswer as string;
+                                    try {
+                                      if (typeof imageUrl === 'string') {
+                                        // 1) Relative path like '/media/...' -> prefix with current origin
+                                        if (imageUrl.startsWith('/')) {
+                                          imageUrl = window.location.origin + imageUrl;
+                                        } else {
+                                          // 2) Absolute URL (maybe pointing to backend) whose path starts with /media/
+                                          //    -> rewrite to use the frontend origin so Vite proxy handles it in dev.
+                                          try {
+                                            const parsed = new URL(imageUrl);
+                                            if (parsed.pathname.startsWith('/media/') && parsed.origin !== window.location.origin) {
+                                              imageUrl = window.location.origin + parsed.pathname;
+                                            }
+                                          } catch (e) {
+                                            // not a valid URL, leave as-is
+                                          }
+                                        }
+                                      }
+                                    } catch (e) {
+                                      // ignore and use original
+                                    }
+                                    return (
+                                      <div className="flex flex-col items-start gap-2 w-full">
+                                        <a href={imageUrl} target="_blank" rel="noopener noreferrer" className="w-full">
+                                          <div className="h-48 w-full flex items-center justify-center overflow-hidden bg-gray-50 rounded">
+                                            <img src={imageUrl} alt={`upload-${q.id}`} className="max-h-full max-w-full object-contain rounded shadow-sm" />
+                                          </div>
+                                        </a>
+                                        <a className="text-blue-600 underline text-sm" href={imageUrl} target="_blank" rel="noopener noreferrer">Open image in new tab</a>
+                                      </div>
+                                    );
+                                  })()
                                 ) : <span className="text-gray-400 italic">No image uploaded</span>
                             ) : (
                                 <div className="text-gray-800 font-medium">
@@ -207,14 +246,20 @@ export const ResultDetails: React.FC<{ currentUser: { id: string, role: string }
                                     onKeyDown={(e) => {
                                         if(e.key === 'Enter') {
                                             const val = (e.target as HTMLInputElement).value;
-                                            if(val !== '') handleGrade(q.id, parseInt(val));
+                                            if(val !== '') {
+                                                const parsed = Number(val);
+                                                handleGrade(q.id, parsed, q.max_score);
+                                            }
                                         }
                                     }}
                                 />
                                 <button 
                                     onClick={() => {
                                         const el = document.getElementById(`grade-input-${q.id}`) as HTMLInputElement;
-                                        if(el && el.value !== '') handleGrade(q.id, parseInt(el.value));
+                                        if(el && el.value !== '') {
+                                            const parsed = Number(el.value);
+                                            handleGrade(q.id, parsed, q.max_score);
+                                        }
                                     }}
                                     disabled={updatingQ === q.id}
                                     className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 disabled:opacity-50 transition"

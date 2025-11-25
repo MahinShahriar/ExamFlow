@@ -1,4 +1,3 @@
-# JWT functions, password hashing
 import uuid
 from typing import Optional
 from fastapi import Depends, Request
@@ -9,9 +8,8 @@ from fastapi_users.authentication import (
     JWTStrategy
 )
 from fastapi_users.db import SQLAlchemyUserDatabase
-from app.config import SECRET
-from app.db import get_user_db                # only import the get_user_db dependency
-from app.models.user_model import User        # import User from the model module
+from .db import get_user_db , SECRET
+from app.models.user_model import User
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):

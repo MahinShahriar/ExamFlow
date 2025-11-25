@@ -13,18 +13,18 @@ class ExamCreate(BaseModel):
     # Selected question IDs; the order in the list defines the exam order
     questions: Optional[List[UUID]] = None
 
-    @validator("duration")
-    def duration_must_be_positive(cls, v):
-        if v is None or v <= 0:
-            raise ValueError("duration must be a positive integer (minutes)")
-        return v
-
-    @validator("end_time")
-    def end_after_start(cls, v, values):
-        start = values.get("start_time")
-        if v is not None and start is not None and v <= start:
-            raise ValueError("end_time must be after start_time")
-        return v
+    # @validator("duration")
+    # def duration_must_be_positive(cls, v):
+    #     if v is None or v <= 0:
+    #         raise ValueError("duration must be a positive integer (minutes)")
+    #     return v
+    #
+    # @validator("end_time")
+    # def end_after_start(cls, v, values):
+    #     start = values.get("start_time")
+    #     if v is not None and start is not None and v <= start:
+    #         raise ValueError("end_time must be after start_time")
+    #     return v
 
 
 class ExamUpdate(BaseModel):
@@ -36,18 +36,18 @@ class ExamUpdate(BaseModel):
     # Replace or reorder questions when provided
     questions: Optional[List[UUID]] = None
 
-    @validator("duration")
-    def duration_must_be_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("duration must be a positive integer (minutes)")
-        return v
-
-    @validator("end_time")
-    def end_after_start(cls, v, values):
-        start = values.get("start_time")
-        if v is not None and start is not None and v <= start:
-            raise ValueError("end_time must be after start_time")
-        return v
+    # @validator("duration")
+    # def duration_must_be_positive(cls, v):
+    #     if v is not None and v <= 0:
+    #         raise ValueError("duration must be a positive integer (minutes)")
+    #     return v
+    #
+    # @validator("end_time")
+    # def end_after_start(cls, v, values):
+    #     start = values.get("start_time")
+    #     if v is not None and start is not None and v <= start:
+    #         raise ValueError("end_time must be after start_time")
+    #     return v
 
 
 class ExamRead(BaseModel):

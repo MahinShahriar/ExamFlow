@@ -13,7 +13,6 @@ class QuestionDB(Base):
     description = Column(String, nullable=True)
     complexity = Column(String, nullable=False)
 
-    # Use Enum for data integrity
     type = Column(Enum('single_choice', 'multi_choice', 'text', 'image_upload', name='question_type'),
                   nullable=False)
     options = Column(JSONB, nullable=True)

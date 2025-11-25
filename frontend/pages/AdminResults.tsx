@@ -11,7 +11,7 @@ export const AdminResults: React.FC = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      const [resData, examData] = await Promise.all([getAllExamResults(), fetchExams()]);
+      const [resData, examData] = await Promise.all([getAllExamResults(), fetchExams('admin')]);
       setResults(resData);
       setExams(examData);
       setLoading(false);
