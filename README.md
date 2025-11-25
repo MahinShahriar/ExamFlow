@@ -68,24 +68,25 @@ pip install -e .
 
 ```sql
 CREATE DATABASE examflow_db;
+CREATE SCHEMA <schema_name>;  -- replace <schema_name> with your desired schema 
 ```
 
-Set the connection in environment variables (example):
+4. Set the connection in environment variables (example):
+create a file named `.env` in the `backend/` directory or export directly in your shell:
 
 ```bash
 export DATABASE_URL="postgresql+asyncpg://user:password@localhost:5432/examflow_db"
+export DATABASE_SCHEMA="<schema_name>"
 export SECRET="your_secret_key_here"
 ```
 
-Check `backend/app/config.py` for additional env vars and settings.
-
-4. Run the backend:
+5. Run the backend:
 
 Option A — using the provided entrypoint:
 
 ```bash
 # from repo root
-python backend/main.py
+uv run backend/main.py
 ```
 
 Option B — run uvicorn directly:
@@ -94,6 +95,8 @@ Option B — run uvicorn directly:
 cd backend
 uvicorn app.app:app --reload --host 127.0.0.1 --port 8000
 ```
+
+
 
 The backend will be available at `http://127.0.0.1:8000` by default.
 
