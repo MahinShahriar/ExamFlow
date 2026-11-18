@@ -2,6 +2,10 @@
 
 End-to-end exam management application (FastAPI backend + React + Vite frontend).
 
+## Video Demonstration
+
+[![Watch on LinkedIn](https://img.shields.io/badge/Watch%20Video-LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://lnkd.in/p/gNjsur3f)
+
 ## Repository layout
 - `backend/` — FastAPI application and Python code.
 - `frontend/` — React + Vite frontend (TypeScript).
